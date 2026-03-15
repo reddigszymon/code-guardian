@@ -2,7 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
 import { ScanRecord, ScanStatus } from '../types/scan.types';
 
-const MAX_RECORDS = parseInt(process.env.MAX_SCAN_RECORDS || '500', 10);
+// Default tuned for --max-old-space-size=150; increase via env var if more RAM is available.
+const MAX_RECORDS = parseInt(process.env.MAX_SCAN_RECORDS || '100', 10);
 
 @Injectable()
 export class ScanStore {
