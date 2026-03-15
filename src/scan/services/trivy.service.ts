@@ -17,7 +17,51 @@ export class TrivyService {
     const cloneDir = path.join(os.tmpdir(), `code-guardian-${uuidv4()}`);
     this.logger.log(`Cloning ${repoUrl} into ${cloneDir}`);
     const git = simpleGit();
-    await git.clone(repoUrl, cloneDir, ['--depth', '1']);
+
+    try {
+      await git.clone(repoUrl, cloneDir, ['--depth', '1']);
+    } catch (error: any) {
+      const msg = error.message || '';
+
+      if (
+        msg.includes('not found') ||
+        msg.includes('does not exist') ||
+        msg.includes('Invalid url')
+      ) {
+        throw new Error(
+          `Repository not found: ${repoUrl} — check that the URL is correct and the repository exists`,
+        );
+      }
+
+      if (
+        msg.includes('Authentication failed') ||
+        msg.includes('could not read Username') ||
+        msg.includes('terminal prompts disabled')
+      ) {
+        throw new Error(
+          `Authentication required for ${repoUrl} — only public repositories are supported`,
+        );
+      }
+
+      if (
+        msg.includes('Could not resolve host') ||
+        msg.includes('unable to access') ||
+        msg.includes('Failed to connect')
+      ) {
+        throw new Error(
+          `Network error cloning ${repoUrl} — check connectivity and try again`,
+        );
+      }
+
+      if (msg.includes('No space left on device') || msg.includes('ENOSPC')) {
+        throw new Error(
+          `Disk full while cloning ${repoUrl} — free up disk space and try again`,
+        );
+      }
+
+      throw new Error(`Failed to clone repository ${repoUrl}: ${msg}`);
+    }
+
     this.logger.log(`Clone complete: ${cloneDir}`);
     return cloneDir;
   }
@@ -25,6 +69,7 @@ export class TrivyService {
   async runScan(repoDir: string, outputPath: string): Promise<void> {
     this.logger.log(`Running Trivy scan on ${repoDir}`);
     const trivyBin = process.env.TRIVY_BIN || 'trivy';
+
     try {
       await execFileAsync(
         trivyBin,
@@ -32,9 +77,33 @@ export class TrivyService {
         { timeout: 5 * 60 * 1000 },
       );
     } catch (error: any) {
-      // Trivy exits with code 0 on success, but some versions exit with
-      // non-zero when vulnerabilities are found. If the output file was
-      // created, treat it as success.
+      // ENOENT means the trivy binary was not found
+      if (error.code === 'ENOENT') {
+        throw new Error(
+          `Trivy is not installed or not found at "${trivyBin}" — install Trivy and ensure it is on PATH`,
+        );
+      }
+
+      // Node kills the process on timeout and sets .killed = true
+      if (error.killed) {
+        throw new Error(
+          `Trivy scan timed out after 5 minutes for ${repoDir} — the repository may be too large`,
+        );
+      }
+
+      // Disk full
+      if (
+        error.stderr?.includes('ENOSPC') ||
+        error.stderr?.includes('No space left on device') ||
+        error.message?.includes('ENOSPC')
+      ) {
+        throw new Error(
+          `Disk full during Trivy scan of ${repoDir} — free up disk space and try again`,
+        );
+      }
+
+      // Trivy exits with non-zero when vulnerabilities are found.
+      // If the output file was created with content, treat as success.
       if (
         error.code !== undefined &&
         fs.existsSync(outputPath) &&
@@ -45,10 +114,12 @@ export class TrivyService {
         );
         return;
       }
+
       throw new Error(
         `Trivy scan failed: ${error.stderr || error.message}`,
       );
     }
+
     this.logger.log(`Trivy scan complete, output: ${outputPath}`);
   }
 

@@ -1,98 +1,208 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Code Guardian
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+A high-performance backend service wrapping the [Trivy](https://github.com/aquasecurity/trivy) security scanner, designed to process massive security reports under strict memory constraints (256MB RAM / 150MB V8 heap). Built with NestJS and Node.js streams to guarantee constant memory usage regardless of scan output size.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Architecture
 
-## Description
+Code Guardian follows a **Controller → Service → Worker** layered architecture with strict separation of concerns enforced by NestJS dependency injection.
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+The core innovation is the **stream pipeline**: Trivy JSON output (which can be hundreds of megabytes for large repositories) is never loaded into memory. Instead, it is parsed token-by-token using `stream-json`, filtered for critical vulnerabilities on the fly, and discarded as it is consumed.
 
-## Project setup
+### Data Flow
 
-```bash
-$ npm install
+```
+POST /api/scan { repoUrl }
+        │
+        ▼
+   ScanController ──── validates input (class-validator DTO)
+        │
+        ▼
+   ScanStore.create() ──── creates record, status: Queued
+        │
+        ▼
+   ScanWorker.processScan() ──── fire-and-forget (non-blocking)
+        │
+        ├── 1. Update status → Scanning
+        ├── 2. Clone repo (simple-git, --depth 1)
+        ├── 3. Run Trivy (child_process.execFile, 5min timeout)
+        ├── 4. Stream-parse JSON ──── parser() → pick({filter:'Results'}) → streamArray()
+        ├── 5. Filter CRITICAL vulnerabilities
+        ├── 6. Update status → Finished (with vulns) or Failed (with error)
+        └── 7. Cleanup temp dirs/files (always, via finally)
+              │
+              ▼
+GET /api/scan/:scanId ──── poll for results
 ```
 
-## Compile and run the project
+### Module Structure
 
-```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+```
+src/
+├── main.ts
+├── app.module.ts
+├── app.controller.ts                  # GET / health check
+├── app.service.ts
+└── scan/
+    ├── scan.module.ts
+    ├── controllers/
+    │   └── scan.controller.ts         # POST /api/scan, GET /api/scan/:id
+    ├── services/
+    │   └── trivy.service.ts           # Git clone + Trivy execution + cleanup
+    ├── workers/
+    │   └── scan.worker.ts             # Orchestrates the full scan lifecycle
+    ├── streams/
+    │   └── vulnerability-filter.stream.ts  # Memory-safe JSON stream pipeline
+    ├── store/
+    │   └── scan.store.ts              # In-memory Map<id, ScanRecord>
+    └── types/
+        ├── scan.types.ts              # ScanStatus, ScanRecord, CriticalVulnerability
+        └── create-scan.dto.ts         # Validated request DTO
 ```
 
-## Run tests
+## Key Design Decisions
+
+| Decision | Rationale |
+|----------|-----------|
+| **NestJS** | Enforced separation of concerns via modules, DI for testability, built-in validation pipeline |
+| **stream-json** | Memory-safe JSON parsing — no `fs.readFile`, no `JSON.parse` on scan results. Trivy output is consumed chunk-by-chunk with backpressure via `stream.pipeline` |
+| **Fire-and-forget async** | `POST` returns `202 Accepted` immediately. Client polls `GET /api/scan/:id` for status transitions (`Queued → Scanning → Finished/Failed`). Prevents HTTP timeouts on large repos |
+| **Cleanup in `finally`** | Temp directories (cloned repos, Trivy JSON output) are always deleted, even if the scan fails or status update throws |
+| **Shallow clone** | `--depth 1` minimizes disk and network usage — Trivy only needs the current file tree |
+| **Specific error handling** | Trivy not installed, timeout, disk full, auth required, invalid URL — each produces a descriptive error message stored on the scan record |
+
+## How to Run
+
+### Prerequisites
+
+- Node.js 20+
+- [Trivy](https://github.com/aquasecurity/trivy) installed and on PATH
+- Git
+
+### Local
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+npm install
+npm run build
+npm run start            # Standard start, port 3000
 ```
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+Memory-constrained mode (150MB V8 heap):
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+npm run start:constrained
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+### Docker
 
-## Resources
+```bash
+docker compose up --build
+```
 
-Check out a few resources that may come in handy when working with NestJS:
+The Docker image uses a multi-stage build (`node:20-slim`), installs Trivy in the final stage, and runs with `--max-old-space-size=150`. The `docker-compose.yml` enforces a hard 200MB container memory limit via `mem_limit`.
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+## API Reference
 
-## Support
+### `POST /api/scan`
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+Queues a security scan for a public GitHub repository.
 
-## Stay in touch
+**Request:**
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+```json
+{
+  "repoUrl": "https://github.com/OWASP/NodeGoat"
+}
+```
 
-## License
+**Response:** `202 Accepted`
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+```json
+{
+  "scanId": "a1b2c3d4-...",
+  "status": "Queued"
+}
+```
+
+**Validation errors:** `400 Bad Request` — repoUrl must be a non-empty, valid GitHub URL. Unknown fields are rejected.
+
+### `GET /api/scan/:scanId`
+
+Returns the current state of a scan.
+
+**Response:** `200 OK`
+
+```json
+{
+  "id": "a1b2c3d4-...",
+  "repoUrl": "https://github.com/OWASP/NodeGoat",
+  "status": "Finished",
+  "criticalVulnerabilities": [
+    {
+      "vulnerabilityId": "CVE-2020-7610",
+      "pkgName": "bson",
+      "installedVersion": "1.0.9",
+      "fixedVersion": "1.1.4",
+      "title": "...",
+      "description": "...",
+      "severity": "CRITICAL",
+      "target": "package-lock.json"
+    }
+  ],
+  "createdAt": "2026-03-15T10:00:00.000Z",
+  "updatedAt": "2026-03-15T10:01:30.000Z"
+}
+```
+
+**Not found:** `404` if scanId does not exist.
+
+**Status transitions:** `Queued → Scanning → Finished` (success) or `Queued → Scanning → Failed` (error, includes `error` field).
+
+### `GET /`
+
+Health check. Returns `{"status":"ok"}`.
+
+## Memory Safety
+
+Trivy produces JSON output proportional to the number of dependencies and vulnerabilities in a project. For large monorepos, this can reach hundreds of megabytes — well beyond the 150MB heap limit.
+
+Code Guardian solves this with a **streaming pipeline**:
+
+1. `fs.createReadStream` reads the file in small chunks
+2. `stream-json/parser` tokenizes JSON without buffering the full document
+3. `stream-json/filters/Pick` selects only the `Results` array
+4. `stream-json/streamers/StreamArray` emits one Result object at a time
+5. A custom `Writable` filters for `Severity === 'CRITICAL'` and collects matches
+
+Each Result is parsed, inspected, and garbage-collected individually. Peak memory usage stays constant regardless of file size.
+
+**To verify:** run with `npm run start:constrained` (150MB heap) or `docker compose up --build` (200MB container limit) and scan a large repository. The process completes without OOM.
+
+## Testing
+
+Full end-to-end flow using curl:
+
+```bash
+# 1. Start the server
+npm run start
+
+# 2. Submit a scan
+curl -X POST http://localhost:3000/api/scan \
+  -H 'Content-Type: application/json' \
+  -d '{"repoUrl":"https://github.com/OWASP/NodeGoat"}'
+# → 202 {"scanId":"...","status":"Queued"}
+
+# 3. Poll for results (repeat until status is Finished or Failed)
+curl http://localhost:3000/api/scan/<scanId>
+# → 200 {"id":"...","status":"Scanning","criticalVulnerabilities":[],...}
+# → 200 {"id":"...","status":"Finished","criticalVulnerabilities":[...],...}
+
+# 4. Verify validation
+curl -X POST http://localhost:3000/api/scan \
+  -H 'Content-Type: application/json' \
+  -d '{"repoUrl":"not-a-url"}'
+# → 400 {"message":["repoUrl must be a GitHub repository URL","repoUrl must be a valid URL"],...}
+
+# 5. Health check
+curl http://localhost:3000/
+# → {"status":"ok"}
+```

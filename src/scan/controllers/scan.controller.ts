@@ -7,10 +7,12 @@ import {
   NotFoundException,
   Param,
   Post,
-  BadRequestException,
+  UsePipes,
+  ValidationPipe,
 } from '@nestjs/common';
 import { ScanStore } from '../store/scan.store';
 import { ScanWorker } from '../workers/scan.worker';
+import { CreateScanDto } from '../types/create-scan.dto';
 
 @Controller('api/scan')
 export class ScanController {
@@ -23,20 +25,9 @@ export class ScanController {
 
   @Post()
   @HttpCode(202)
-  create(@Body() body: { repoUrl: string }) {
-    const { repoUrl } = body;
-
-    if (
-      !repoUrl ||
-      typeof repoUrl !== 'string' ||
-      !/^https?:\/\/github\.com\/.+\/.+/.test(repoUrl)
-    ) {
-      throw new BadRequestException(
-        'repoUrl must be a valid GitHub repository URL',
-      );
-    }
-
-    const record = this.scanStore.create(repoUrl);
+  @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
+  create(@Body() dto: CreateScanDto) {
+    const record = this.scanStore.create(dto.repoUrl);
 
     this.scanWorker.processScan(record.id).catch((error) => {
       this.logger.error(

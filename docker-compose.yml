@@ -1,0 +1,8 @@
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    mem_limit: 200m
+    environment:
+      - NODE_ENV=production

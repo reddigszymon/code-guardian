@@ -50,15 +50,27 @@ export class ScanWorker {
       this.logger.log(`[${scanId}] Scan finished`);
     } catch (error: any) {
       this.logger.error(`[${scanId}] Scan failed: ${error.message}`);
-      this.scanStore.updateStatus(scanId, ScanStatus.Failed, {
-        error: error.message,
-      });
-    } finally {
-      const cleanupPaths = [outputPath];
-      if (cloneDir) {
-        cleanupPaths.push(cloneDir);
+      try {
+        this.scanStore.updateStatus(scanId, ScanStatus.Failed, {
+          error: error.message,
+        });
+      } catch (updateError: any) {
+        this.logger.error(
+          `[${scanId}] Failed to update status to Failed: ${updateError.message}`,
+        );
       }
-      await this.trivyService.cleanup(cleanupPaths);
+    } finally {
+      try {
+        const cleanupPaths = [outputPath];
+        if (cloneDir) {
+          cleanupPaths.push(cloneDir);
+        }
+        await this.trivyService.cleanup(cleanupPaths);
+      } catch (cleanupError: any) {
+        this.logger.error(
+          `[${scanId}] Cleanup failed: ${cleanupError.message}`,
+        );
+      }
     }
   }
 }
