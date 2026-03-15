@@ -4,6 +4,7 @@
 /build
 /frontend/node_modules
 /schema.gql
+*.tsbuildinfo
 
 # Logs
 logs
