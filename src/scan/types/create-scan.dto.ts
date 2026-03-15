@@ -5,11 +5,10 @@ import {
   registerDecorator,
   ValidationOptions,
 } from 'class-validator';
+import { isStrictGitHubUrl } from '../utils/validate-github-url';
 
 /**
- * Validates that the URL's parsed hostname is exactly github.com,
- * rejects userinfo (user:pass@), non-standard ports, and hostname tricks
- * like github.com.evil.com or github.com@evil.com.
+ * class-validator decorator that delegates to the shared isStrictGitHubUrl check.
  */
 function IsStrictGitHubUrl(validationOptions?: ValidationOptions) {
   return function (object: object, propertyName: string) {
@@ -20,18 +19,7 @@ function IsStrictGitHubUrl(validationOptions?: ValidationOptions) {
       options: validationOptions,
       validator: {
         validate(value: unknown): boolean {
-          if (typeof value !== 'string') return false;
-          try {
-            const url = new URL(value);
-            if (url.hostname !== 'github.com') return false;
-            if (url.username || url.password) return false;
-            if (url.port) return false;
-            // Ensure at least /owner/repo in pathname
-            const parts = url.pathname.split('/').filter(Boolean);
-            return parts.length >= 2;
-          } catch {
-            return false;
-          }
+          return isStrictGitHubUrl(value);
         },
         defaultMessage(): string {
           return 'repoUrl must be a valid GitHub repository URL (https://github.com/owner/repo)';

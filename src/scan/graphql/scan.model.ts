@@ -11,4 +11,7 @@ export class Scan {
 
   @Field(() => [Vulnerability], { nullable: true })
   criticalVulnerabilities?: Vulnerability[];
+
+  @Field({ nullable: true })
+  error?: string;
 }

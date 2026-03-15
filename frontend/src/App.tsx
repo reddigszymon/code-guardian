@@ -15,7 +15,9 @@ interface ScanResult {
 }
 
 export function App() {
-  const [repoUrl, setRepoUrl] = useState('https://github.com/OWASP/NodeGoat');
+  const [repoUrl, setRepoUrl] = useState(
+    'https://github.com/reddigszymon/NodeGoat',
+  );
   const [scanId, setScanId] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [vulnerabilities, setVulnerabilities] = useState<Vulnerability[]>([]);
@@ -28,7 +30,7 @@ export function App() {
     setVulnerabilities([]);
     setError(null);
     setLoading(false);
-    setRepoUrl('https://github.com/OWASP/NodeGoat');
+    setRepoUrl('https://github.com/reddigszymon/NodeGoat');
   };
 
   const startScan = async () => {
@@ -85,7 +87,9 @@ export function App() {
   return (
     <div className="app">
       <h1>Code Guardian</h1>
-      <p className="subtitle">Security vulnerability scanner powered by Trivy</p>
+      <p className="subtitle">
+        Security vulnerability scanner powered by Trivy
+      </p>
 
       <div className="scan-form">
         <input
@@ -113,7 +117,9 @@ export function App() {
       {status && (status === 'Queued' || status === 'Scanning') && (
         <div className={`status status-${status.toLowerCase()}`}>
           <span className="spinner" />
-          {status === 'Queued' ? 'Scan queued, waiting to start...' : 'Scanning repository...'}
+          {status === 'Queued'
+            ? 'Scan queued, waiting to start...'
+            : 'Scanning repository...'}
         </div>
       )}
 
@@ -122,7 +128,8 @@ export function App() {
           <div className="status status-finished">Scan complete</div>
           <p className="results-count">
             {vulnerabilities.length} critical{' '}
-            {vulnerabilities.length === 1 ? 'vulnerability' : 'vulnerabilities'} found
+            {vulnerabilities.length === 1 ? 'vulnerability' : 'vulnerabilities'}{' '}
+            found
           </p>
           {vulnerabilities.length > 0 && (
             <table className="results-table">

@@ -36,6 +36,7 @@ export interface ScanRecord {
 export interface ScanResponse {
   status: ScanStatus;
   criticalVulnerabilities?: CriticalVulnerability[];
+  error?: string;
 }
 
 // ─── Trivy JSON output types — used for stream-based parsing ─────────────

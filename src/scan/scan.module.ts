@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+                                                    import { Module } from '@nestjs/common';
 import { ScanController } from './controllers/scan.controller';
 import { ScanStore } from './store/scan.store';
 import { TrivyService } from './services/trivy.service';

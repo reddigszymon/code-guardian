@@ -1,24 +1,10 @@
 import { Resolver, Query, Mutation, Args, ID } from '@nestjs/graphql';
-import { BadRequestException, Logger } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { Scan } from './scan.model';
 import { ScanStore } from '../store/scan.store';
 import { ScanWorker } from '../workers/scan.worker';
-import { getErrorMessage } from '../types/scan.types';
-
-/** Validates that a URL is strictly a GitHub repository URL. */
-function isStrictGitHubUrl(raw: string): boolean {
-  try {
-    const url = new URL(raw);
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
-    if (url.hostname !== 'github.com') return false;
-    if (url.username || url.password) return false;
-    if (url.port) return false;
-    const parts = url.pathname.split('/').filter(Boolean);
-    return parts.length >= 2;
-  } catch {
-    return false;
-  }
-}
+import { ScanStatus, getErrorMessage } from '../types/scan.types';
+import { validateGitHubUrl } from '../utils/validate-github-url';
 
 @Resolver(() => Scan)
 export class ScanResolver {
@@ -31,18 +17,10 @@ export class ScanResolver {
 
   @Mutation(() => Scan)
   startScan(@Args('repoUrl') repoUrl: string): Scan {
-    if (!repoUrl || repoUrl.trim().length === 0) {
-      throw new BadRequestException('repoUrl must not be empty');
-    }
-
-    if (!isStrictGitHubUrl(repoUrl)) {
-      throw new BadRequestException(
-        'repoUrl must be a valid GitHub repository URL (https://github.com/owner/repo)',
-      );
-    }
+    validateGitHubUrl(repoUrl);
 
     if (this.scanWorker.isQueueFull()) {
-      throw new BadRequestException('Server is busy, try again later');
+      throw new Error('Server is busy, try again later');
     }
 
     const record = this.scanStore.create(repoUrl);
@@ -58,7 +36,7 @@ export class ScanResolver {
     return {
       id: record.id,
       status: record.status,
-      criticalVulnerabilities: [],
+      criticalVulnerabilities: undefined,
     };
   }
 
@@ -72,7 +50,11 @@ export class ScanResolver {
     return {
       id: record.id,
       status: record.status,
-      criticalVulnerabilities: record.criticalVulnerabilities,
+      criticalVulnerabilities:
+        record.status === ScanStatus.Finished
+          ? record.criticalVulnerabilities
+          : undefined,
+      error: record.status === ScanStatus.Failed ? record.error : undefined,
     };
   }
 }

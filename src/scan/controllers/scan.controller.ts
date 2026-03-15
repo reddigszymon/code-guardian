@@ -68,6 +68,10 @@ export class ScanController {
       response.criticalVulnerabilities = record.criticalVulnerabilities;
     }
 
+    if (record.status === ScanStatus.Failed && record.error) {
+      response.error = record.error;
+    }
+
     return response;
   }
 }

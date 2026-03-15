@@ -61,14 +61,14 @@ src/
 
 ## Key Design Decisions
 
-| Decision | Rationale |
-|----------|-----------|
-| **NestJS** | Enforced separation of concerns via modules, DI for testability, built-in validation pipeline |
-| **stream-json** | Memory-safe JSON parsing — no `fs.readFile`, no `JSON.parse` on scan results. Trivy output is consumed chunk-by-chunk with backpressure via `stream.pipeline` |
-| **Fire-and-forget async** | `POST` returns `202 Accepted` immediately. Client polls `GET /api/scan/:id` for status transitions (`Queued → Scanning → Finished/Failed`). Prevents HTTP timeouts on large repos |
-| **Cleanup in `finally`** | Temp directories (cloned repos, Trivy JSON output) are always deleted, even if the scan fails or status update throws |
-| **Shallow clone** | `--depth 1` minimizes disk and network usage — Trivy only needs the current file tree |
-| **Specific error handling** | Trivy not installed, timeout, disk full, auth required, invalid URL — each produces a descriptive error message stored on the scan record |
+| Decision                    | Rationale                                                                                                                                                                         |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **NestJS**                  | Enforced separation of concerns via modules, DI for testability, built-in validation pipeline                                                                                     |
+| **stream-json**             | Memory-safe JSON parsing — no `fs.readFile`, no `JSON.parse` on scan results. Trivy output is consumed chunk-by-chunk with backpressure via `stream.pipeline`                     |
+| **Fire-and-forget async**   | `POST` returns `202 Accepted` immediately. Client polls `GET /api/scan/:id` for status transitions (`Queued → Scanning → Finished/Failed`). Prevents HTTP timeouts on large repos |
+| **Cleanup in `finally`**    | Temp directories (cloned repos, Trivy JSON output) are always deleted, even if the scan fails or status update throws                                                             |
+| **Shallow clone**           | `--depth 1` minimizes disk and network usage — Trivy only needs the current file tree                                                                                             |
+| **Specific error handling** | Trivy not installed, timeout, disk full, auth required, invalid URL — each produces a descriptive error message stored on the scan record                                         |
 
 ## How to Run
 
@@ -110,7 +110,7 @@ Queues a security scan for a public GitHub repository.
 
 ```json
 {
-  "repoUrl": "https://github.com/OWASP/NodeGoat"
+  "repoUrl": "https://github.com/reddigszymon/NodeGoat"
 }
 ```
 
@@ -202,7 +202,7 @@ type Query {
 
 ```graphql
 mutation {
-  startScan(repoUrl: "https://github.com/OWASP/NodeGoat") {
+  startScan(repoUrl: "https://github.com/reddigszymon/NodeGoat") {
     id
     status
   }
@@ -243,7 +243,7 @@ The dev server starts on `http://localhost:5173` and proxies `/api` requests to 
 
 ### Features
 
-- Input field pre-filled with `https://github.com/OWASP/NodeGoat`
+- Input field pre-filled with `https://github.com/reddigszymon/NodeGoat`
 - **Start Scan** button triggers `POST /api/scan` and begins polling
 - Status indicator with spinner while scan is Queued/Scanning
 - Results table showing critical vulnerabilities (ID, Package, Installed Version, Fixed Version, Title)
@@ -252,15 +252,15 @@ The dev server starts on `http://localhost:5173` and proxies `/api` requests to 
 
 ## Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT` | `3000` | HTTP listen port |
-| `CORS_ORIGIN` | `*` | Allowed CORS origins (comma-separated, or `*` for all) |
-| `SCAN_TIMEOUT_MS` | `300000` | Maximum time (ms) for a single Trivy scan before timeout |
-| `MAX_CONCURRENT_SCANS` | `2` | Maximum scans running in parallel; excess scans are queued |
-| `MAX_SCAN_RECORDS` | `500` | Maximum in-memory scan records before LRU eviction |
-| `MAX_CRITICAL_VULNERABILITIES` | `1000` | Cap on critical vulnerabilities collected per scan |
-| `TRIVY_BIN` | `trivy` | Path to the Trivy binary |
+| Variable                       | Default      | Description                                                         |
+| ------------------------------ | ------------ | ------------------------------------------------------------------- |
+| `PORT`                         | `3000`       | HTTP listen port                                                    |
+| `CORS_ORIGIN`                  | _(disabled)_ | Allowed CORS origins (comma-separated). CORS is disabled when unset |
+| `SCAN_TIMEOUT_MS`              | `300000`     | Maximum time (ms) for a single Trivy scan before timeout            |
+| `MAX_CONCURRENT_SCANS`         | `2`          | Maximum scans running in parallel; excess scans are queued          |
+| `MAX_SCAN_RECORDS`             | `500`        | Maximum in-memory scan records before LRU eviction                  |
+| `MAX_CRITICAL_VULNERABILITIES` | `1000`       | Cap on critical vulnerabilities collected per scan                  |
+| `TRIVY_BIN`                    | `trivy`      | Path to the Trivy binary                                            |
 
 ## Memory Safety
 
@@ -303,7 +303,7 @@ npm run start
 # 2. Submit a scan
 curl -X POST http://localhost:3000/api/scan \
   -H 'Content-Type: application/json' \
-  -d '{"repoUrl":"https://github.com/OWASP/NodeGoat"}'
+  -d '{"repoUrl":"https://github.com/reddigszymon/NodeGoat"}'
 # → 202 {"scanId":"...","status":"Queued"}
 
 # 3. Poll for results (repeat until status is Finished or Failed)
