@@ -1,0 +1,31 @@
+{
+  "SchemaVersion": 2,
+  "Results": [
+    {
+      "Target": "package.json",
+      "Vulnerabilities": [
+        {
+          "Severity": "CRITICAL"
+        },
+        {
+          "VulnerabilityID": "CVE-2023-0001",
+          "Severity": "CRITICAL",
+          "PkgName": "some-pkg"
+        }
+      ]
+    },
+    {
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2023-0002",
+          "Severity": "CRITICAL",
+          "PkgName": "another-pkg",
+          "InstalledVersion": "1.0.0",
+          "FixedVersion": "2.0.0",
+          "Title": "Some vuln",
+          "Description": "Description"
+        }
+      ]
+    }
+  ]
+}

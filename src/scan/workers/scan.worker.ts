@@ -12,6 +12,8 @@ const MAX_CONCURRENT_SCANS = parseInt(
   10,
 );
 
+const MAX_QUEUE_SIZE = parseInt(process.env.MAX_QUEUE_SIZE || '100', 10);
+
 @Injectable()
 export class ScanWorker {
   private readonly logger = new Logger(ScanWorker.name);
@@ -23,11 +25,21 @@ export class ScanWorker {
     private readonly trivyService: TrivyService,
   ) {}
 
+  /** Returns true if the worker queue is at capacity. */
+  isQueueFull(): boolean {
+    return this.queue.length >= MAX_QUEUE_SIZE;
+  }
+
   /** Enqueues or immediately starts a scan. Respects the concurrency limit. */
   async processScan(scanId: string): Promise<void> {
     if (this.activeScans >= MAX_CONCURRENT_SCANS) {
+      if (this.queue.length >= MAX_QUEUE_SIZE) {
+        throw new Error(
+          `Queue is full (${MAX_QUEUE_SIZE} pending scans) — try again later`,
+        );
+      }
       this.logger.log(
-        `[${scanId}] Queued (${this.activeScans}/${MAX_CONCURRENT_SCANS} active)`,
+        `[${scanId}] Queued (${this.activeScans}/${MAX_CONCURRENT_SCANS} active, ${this.queue.length}/${MAX_QUEUE_SIZE} queued)`,
       );
       this.queue.push(scanId);
       return;

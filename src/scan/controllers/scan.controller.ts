@@ -7,6 +7,7 @@ import {
   NotFoundException,
   Param,
   Post,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ScanStore } from '../store/scan.store';
 import { ScanWorker } from '../workers/scan.worker';
@@ -30,6 +31,12 @@ export class ScanController {
   @Post()
   @HttpCode(202)
   create(@Body() dto: CreateScanDto): { scanId: string; status: string } {
+    if (this.scanWorker.isQueueFull()) {
+      throw new ServiceUnavailableException(
+        'Server is busy, try again later',
+      );
+    }
+
     const record = this.scanStore.create(dto.repoUrl);
 
     // Defer worker start to next tick so the response returns status "Queued"

@@ -77,5 +77,8 @@ export interface ExecError extends Error {
 }
 
 export function isExecError(error: unknown): error is ExecError {
-  return error instanceof Error;
+  return (
+    error instanceof Error &&
+    ('code' in error || 'killed' in error || 'stderr' in error)
+  );
 }

@@ -6,6 +6,7 @@ interface Vulnerability {
   installedVersion: string;
   fixedVersion: string;
   title: string;
+  target: string;
 }
 
 interface ScanResult {
@@ -136,7 +137,7 @@ export function App() {
               </thead>
               <tbody>
                 {vulnerabilities.map((v) => (
-                  <tr key={v.vulnerabilityId + v.pkgName}>
+                  <tr key={v.vulnerabilityId + v.pkgName + v.target}>
                     <td>{v.vulnerabilityId}</td>
                     <td>{v.pkgName}</td>
                     <td>{v.installedVersion}</td>
