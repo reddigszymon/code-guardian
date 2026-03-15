@@ -5,7 +5,20 @@ import { ScanStore } from '../store/scan.store';
 import { ScanWorker } from '../workers/scan.worker';
 import { getErrorMessage } from '../types/scan.types';
 
-const GITHUB_URL_RE = /^https?:\/\/github\.com\/.+\/.+/;
+/** Validates that a URL is strictly a GitHub repository URL. */
+function isStrictGitHubUrl(raw: string): boolean {
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+    if (url.hostname !== 'github.com') return false;
+    if (url.username || url.password) return false;
+    if (url.port) return false;
+    const parts = url.pathname.split('/').filter(Boolean);
+    return parts.length >= 2;
+  } catch {
+    return false;
+  }
+}
 
 @Resolver(() => Scan)
 export class ScanResolver {
@@ -22,18 +35,10 @@ export class ScanResolver {
       throw new BadRequestException('repoUrl must not be empty');
     }
 
-    try {
-      const url = new URL(repoUrl);
-      if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-        throw new BadRequestException('repoUrl must use http or https protocol');
-      }
-    } catch (error: unknown) {
-      if (error instanceof BadRequestException) throw error;
-      throw new BadRequestException('repoUrl must be a valid URL');
-    }
-
-    if (!GITHUB_URL_RE.test(repoUrl)) {
-      throw new BadRequestException('repoUrl must be a GitHub repository URL');
+    if (!isStrictGitHubUrl(repoUrl)) {
+      throw new BadRequestException(
+        'repoUrl must be a valid GitHub repository URL (https://github.com/owner/repo)',
+      );
     }
 
     if (this.scanWorker.isQueueFull()) {

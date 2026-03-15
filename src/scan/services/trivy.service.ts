@@ -11,6 +11,7 @@ import { getErrorMessage, isExecError } from '../types/scan.types';
 const execFileAsync = promisify(execFile);
 
 const SCAN_TIMEOUT_MS = parseInt(process.env.SCAN_TIMEOUT_MS || '300000', 10);
+const CLONE_TIMEOUT_MS = parseInt(process.env.CLONE_TIMEOUT_MS || '120000', 10);
 const TRIVY_MAX_BUFFER = 50 * 1024 * 1024; // 50 MB — Trivy stderr can be verbose
 
 @Injectable()
@@ -21,7 +22,7 @@ export class TrivyService {
   async cloneRepo(repoUrl: string): Promise<string> {
     const cloneDir = path.join(os.tmpdir(), `code-guardian-${uuidv4()}`);
     this.logger.log(`Cloning ${repoUrl} into ${cloneDir}`);
-    const git = simpleGit();
+    const git = simpleGit({ timeout: { block: CLONE_TIMEOUT_MS } });
 
     try {
       await git.clone(repoUrl, cloneDir, ['--depth', '1']);
@@ -58,13 +59,26 @@ export class TrivyService {
         );
       }
 
+      if (
+        msg.includes('timed out') ||
+        msg.includes('SIGTERM') ||
+        msg.includes('killed')
+      ) {
+        throw new Error(
+          `Clone timed out after ${CLONE_TIMEOUT_MS / 1000}s for ${repoUrl} — the repository may be too large`,
+        );
+      }
+
       if (msg.includes('No space left on device') || msg.includes('ENOSPC')) {
         throw new Error(
           `Disk full while cloning ${repoUrl} — free up disk space and try again`,
         );
       }
 
-      throw new Error(`Failed to clone repository ${repoUrl}: ${msg}`);
+      this.logger.error(`Clone failed for ${repoUrl}: ${msg}`);
+      throw new Error(
+        `Failed to clone repository ${repoUrl} — an unexpected error occurred`,
+      );
     }
 
     this.logger.log(`Clone complete: ${cloneDir}`);
@@ -84,7 +98,8 @@ export class TrivyService {
       );
     } catch (error: unknown) {
       if (!isExecError(error)) {
-        throw new Error(`Trivy scan failed: ${String(error)}`);
+        this.logger.error(`Trivy scan failed (non-exec): ${String(error)}`);
+        throw new Error('Trivy scan failed — an unexpected error occurred');
       }
 
       // ENOENT means the trivy binary was not found
@@ -97,7 +112,7 @@ export class TrivyService {
       // Node kills the process on timeout and sets .killed = true
       if (error.killed) {
         throw new Error(
-          `Trivy scan timed out after ${SCAN_TIMEOUT_MS / 1000}s for ${repoDir} — the repository may be too large`,
+          `Trivy scan timed out after ${SCAN_TIMEOUT_MS / 1000}s — the repository may be too large`,
         );
       }
 
@@ -108,7 +123,7 @@ export class TrivyService {
         error.message?.includes('ENOSPC')
       ) {
         throw new Error(
-          `Disk full during Trivy scan of ${repoDir} — free up disk space and try again`,
+          'Disk full during scan — free up disk space and try again',
         );
       }
 
@@ -125,7 +140,10 @@ export class TrivyService {
         return;
       }
 
-      throw new Error(`Trivy scan failed: ${error.stderr || error.message}`);
+      this.logger.error(
+        `Trivy scan failed: ${error.stderr || error.message}`,
+      );
+      throw new Error('Trivy scan failed — an unexpected error occurred');
     }
 
     this.logger.log(`Trivy scan complete, output: ${outputPath}`);

@@ -12,7 +12,7 @@ import { ScanModule } from './scan/scan.module';
     GraphQLModule.forRoot<ApolloDriverConfig>({
       driver: ApolloDriver,
       autoSchemaFile: join(process.cwd(), 'schema.gql'),
-      playground: true,
+      playground: process.env.NODE_ENV !== 'production',
     }),
   ],
   controllers: [AppController],
