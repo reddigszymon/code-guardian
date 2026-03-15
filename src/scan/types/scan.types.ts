@@ -25,3 +25,41 @@ export interface ScanRecord {
   createdAt: Date;
   updatedAt: Date;
 }
+
+/** Trivy JSON output types — used for stream-based parsing */
+export interface TrivyVulnerability {
+  VulnerabilityID?: string;
+  PkgName?: string;
+  InstalledVersion?: string;
+  FixedVersion?: string;
+  Title?: string;
+  Description?: string;
+  Severity?: string;
+}
+
+export interface TrivyResult {
+  Target?: string;
+  Vulnerabilities?: TrivyVulnerability[];
+}
+
+export interface StreamArrayChunk {
+  key: number;
+  value: TrivyResult;
+}
+
+/** Type-safe error message extraction for catch(error: unknown) blocks */
+export function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+/** Narrow an unknown catch value to an object with optional exec-specific fields */
+export interface ExecError extends Error {
+  code?: string | number;
+  killed?: boolean;
+  stderr?: string;
+}
+
+export function isExecError(error: unknown): error is ExecError {
+  return error instanceof Error;
+}

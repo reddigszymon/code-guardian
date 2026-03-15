@@ -6,8 +6,11 @@ import * as path from 'path';
 import { promisify } from 'util';
 import { v4 as uuidv4 } from 'uuid';
 import simpleGit from 'simple-git';
+import { getErrorMessage, isExecError } from '../types/scan.types';
 
 const execFileAsync = promisify(execFile);
+
+const SCAN_TIMEOUT_MS = parseInt(process.env.SCAN_TIMEOUT_MS || '300000', 10);
 
 @Injectable()
 export class TrivyService {
@@ -20,8 +23,8 @@ export class TrivyService {
 
     try {
       await git.clone(repoUrl, cloneDir, ['--depth', '1']);
-    } catch (error: any) {
-      const msg = error.message || '';
+    } catch (error: unknown) {
+      const msg = getErrorMessage(error);
 
       if (
         msg.includes('not found') ||
@@ -74,9 +77,13 @@ export class TrivyService {
       await execFileAsync(
         trivyBin,
         ['fs', '--format', 'json', '--output', outputPath, repoDir],
-        { timeout: 5 * 60 * 1000 },
+        { timeout: SCAN_TIMEOUT_MS },
       );
-    } catch (error: any) {
+    } catch (error: unknown) {
+      if (!isExecError(error)) {
+        throw new Error(`Trivy scan failed: ${String(error)}`);
+      }
+
       // ENOENT means the trivy binary was not found
       if (error.code === 'ENOENT') {
         throw new Error(
@@ -87,7 +94,7 @@ export class TrivyService {
       // Node kills the process on timeout and sets .killed = true
       if (error.killed) {
         throw new Error(
-          `Trivy scan timed out after 5 minutes for ${repoDir} — the repository may be too large`,
+          `Trivy scan timed out after ${SCAN_TIMEOUT_MS / 1000}s for ${repoDir} — the repository may be too large`,
         );
       }
 
@@ -110,14 +117,12 @@ export class TrivyService {
         fs.statSync(outputPath).size > 0
       ) {
         this.logger.warn(
-          `Trivy exited with code ${error.code}, but output file exists — treating as success`,
+          `Trivy exited with code ${String(error.code)}, but output file exists — treating as success`,
         );
         return;
       }
 
-      throw new Error(
-        `Trivy scan failed: ${error.stderr || error.message}`,
-      );
+      throw new Error(`Trivy scan failed: ${error.stderr || error.message}`);
     }
 
     this.logger.log(`Trivy scan complete, output: ${outputPath}`);
@@ -128,8 +133,8 @@ export class TrivyService {
       try {
         await fs.promises.rm(p, { recursive: true, force: true });
         this.logger.log(`Cleaned up: ${p}`);
-      } catch (error: any) {
-        this.logger.warn(`Failed to clean up ${p}: ${error.message}`);
+      } catch (error: unknown) {
+        this.logger.warn(`Failed to clean up ${p}: ${getErrorMessage(error)}`);
       }
     }
   }

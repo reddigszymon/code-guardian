@@ -7,8 +7,6 @@ import {
   NotFoundException,
   Param,
   Post,
-  UsePipes,
-  ValidationPipe,
 } from '@nestjs/common';
 import { ScanStore } from '../store/scan.store';
 import { ScanWorker } from '../workers/scan.worker';
@@ -25,13 +23,13 @@ export class ScanController {
 
   @Post()
   @HttpCode(202)
-  @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
   create(@Body() dto: CreateScanDto) {
     const record = this.scanStore.create(dto.repoUrl);
 
-    this.scanWorker.processScan(record.id).catch((error) => {
+    this.scanWorker.processScan(record.id).catch((error: unknown) => {
+      const msg = error instanceof Error ? error.message : String(error);
       this.logger.error(
-        `Unhandled error in scan worker for ${record.id}: ${error.message}`,
+        `Unhandled error in scan worker for ${record.id}: ${msg}`,
       );
     });
 

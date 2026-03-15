@@ -36,7 +36,10 @@ export class ScanStore {
     record.status = status;
     record.updatedAt = new Date();
     if (data) {
-      Object.assign(record, data, { id: record.id, updatedAt: record.updatedAt });
+      Object.assign(record, data, {
+        id: record.id,
+        updatedAt: record.updatedAt,
+      });
     }
   }
 }

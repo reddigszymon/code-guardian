@@ -4,7 +4,7 @@ import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { ScanStore } from '../store/scan.store';
 import { TrivyService } from '../services/trivy.service';
-import { ScanStatus } from '../types/scan.types';
+import { ScanStatus, getErrorMessage } from '../types/scan.types';
 import { extractCriticalVulnerabilities } from '../streams/vulnerability-filter.stream';
 
 @Injectable()
@@ -48,15 +48,16 @@ export class ScanWorker {
         criticalVulnerabilities: criticals,
       });
       this.logger.log(`[${scanId}] Scan finished`);
-    } catch (error: any) {
-      this.logger.error(`[${scanId}] Scan failed: ${error.message}`);
+    } catch (error: unknown) {
+      const msg = getErrorMessage(error);
+      this.logger.error(`[${scanId}] Scan failed: ${msg}`);
       try {
         this.scanStore.updateStatus(scanId, ScanStatus.Failed, {
-          error: error.message,
+          error: msg,
         });
-      } catch (updateError: any) {
+      } catch (updateError: unknown) {
         this.logger.error(
-          `[${scanId}] Failed to update status to Failed: ${updateError.message}`,
+          `[${scanId}] Failed to update status to Failed: ${getErrorMessage(updateError)}`,
         );
       }
     } finally {
@@ -66,9 +67,9 @@ export class ScanWorker {
           cleanupPaths.push(cloneDir);
         }
         await this.trivyService.cleanup(cleanupPaths);
-      } catch (cleanupError: any) {
+      } catch (cleanupError: unknown) {
         this.logger.error(
-          `[${scanId}] Cleanup failed: ${cleanupError.message}`,
+          `[${scanId}] Cleanup failed: ${getErrorMessage(cleanupError)}`,
         );
       }
     }
