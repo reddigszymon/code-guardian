@@ -4,7 +4,6 @@ import {
   Matches,
   registerDecorator,
   ValidationOptions,
-  ValidationArguments,
 } from 'class-validator';
 
 /**
@@ -20,7 +19,7 @@ function IsStrictGitHubUrl(validationOptions?: ValidationOptions) {
       propertyName,
       options: validationOptions,
       validator: {
-        validate(value: unknown, _args: ValidationArguments): boolean {
+        validate(value: unknown): boolean {
           if (typeof value !== 'string') return false;
           try {
             const url = new URL(value);

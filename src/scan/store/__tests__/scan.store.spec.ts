@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ScanStore } from '../scan.store';
+import { ScanStore, MAX_SCAN_RECORDS_TOKEN } from '../scan.store';
 import { ScanStatus } from '../../types/scan.types';
 
 describe('ScanStore', () => {
@@ -107,22 +107,60 @@ describe('ScanStore', () => {
   });
 
   describe('eviction', () => {
+    let smallStore: ScanStore;
+
+    beforeEach(async () => {
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          ScanStore,
+          { provide: MAX_SCAN_RECORDS_TOKEN, useValue: 3 },
+        ],
+      }).compile();
+
+      smallStore = module.get<ScanStore>(ScanStore);
+    });
+
     it('evicts oldest finished/failed records when at capacity', () => {
-      // Override MAX_RECORDS for this test by filling the store
-      // The default is 500, so we'll test the eviction logic directly
-      // by creating records and marking some as finished
-      const records = Array.from({ length: 5 }, (_, i) =>
-        store.create(`https://github.com/test/repo${i}`),
-      );
+      const r1 = smallStore.create('https://github.com/test/repo1');
+      const r2 = smallStore.create('https://github.com/test/repo2');
 
-      // Mark first two as Finished
-      store.updateStatus(records[0].id, ScanStatus.Finished);
-      store.updateStatus(records[1].id, ScanStatus.Failed);
+      // Mark both as finished so they're eligible for eviction
+      smallStore.updateStatus(r1.id, ScanStatus.Finished);
+      smallStore.updateStatus(r2.id, ScanStatus.Failed);
 
-      // All records should still be retrievable (under default cap of 500)
-      expect(store.get(records[0].id)).toBeDefined();
-      expect(store.get(records[1].id)).toBeDefined();
-      expect(store.get(records[2].id)).toBeDefined();
+      // r3 fills the store to capacity (3)
+      const r3 = smallStore.create('https://github.com/test/repo3');
+
+      // All 3 still present (at capacity, not over)
+      expect(smallStore.get(r1.id)).toBeDefined();
+      expect(smallStore.get(r2.id)).toBeDefined();
+      expect(smallStore.get(r3.id)).toBeDefined();
+
+      // r4 triggers eviction — r1 (oldest Finished) should be evicted
+      const r4 = smallStore.create('https://github.com/test/repo4');
+
+      expect(smallStore.get(r1.id)).toBeUndefined();
+      expect(smallStore.get(r2.id)).toBeDefined();
+      expect(smallStore.get(r3.id)).toBeDefined();
+      expect(smallStore.get(r4.id)).toBeDefined();
+    });
+
+    it('preserves queued/scanning records during eviction', () => {
+      const r1 = smallStore.create('https://github.com/test/repo1');
+      const r2 = smallStore.create('https://github.com/test/repo2');
+      const r3 = smallStore.create('https://github.com/test/repo3');
+
+      // r1 is Scanning (active), r2 is Finished (evictable), r3 is Queued (active)
+      smallStore.updateStatus(r1.id, ScanStatus.Scanning);
+      smallStore.updateStatus(r2.id, ScanStatus.Finished);
+
+      // r4 triggers eviction — r2 (Finished) should be evicted, not r1 or r3
+      const r4 = smallStore.create('https://github.com/test/repo4');
+
+      expect(smallStore.get(r1.id)).toBeDefined();
+      expect(smallStore.get(r2.id)).toBeUndefined();
+      expect(smallStore.get(r3.id)).toBeDefined();
+      expect(smallStore.get(r4.id)).toBeDefined();
     });
   });
 });

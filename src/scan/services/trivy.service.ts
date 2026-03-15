@@ -140,9 +140,7 @@ export class TrivyService {
         return;
       }
 
-      this.logger.error(
-        `Trivy scan failed: ${error.stderr || error.message}`,
-      );
+      this.logger.error(`Trivy scan failed: ${error.stderr || error.message}`);
       throw new Error('Trivy scan failed — an unexpected error occurred');
     }
 

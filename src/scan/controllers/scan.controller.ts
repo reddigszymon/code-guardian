@@ -32,9 +32,7 @@ export class ScanController {
   @HttpCode(202)
   create(@Body() dto: CreateScanDto): { scanId: string; status: string } {
     if (this.scanWorker.isQueueFull()) {
-      throw new ServiceUnavailableException(
-        'Server is busy, try again later',
-      );
+      throw new ServiceUnavailableException('Server is busy, try again later');
     }
 
     const record = this.scanStore.create(dto.repoUrl);

@@ -1,14 +1,21 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Inject, Optional, Logger } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
 import { ScanRecord, ScanStatus } from '../types/scan.types';
 
 // Default tuned for --max-old-space-size=150; increase via env var if more RAM is available.
-const MAX_RECORDS = parseInt(process.env.MAX_SCAN_RECORDS || '100', 10);
+const DEFAULT_MAX_RECORDS = parseInt(process.env.MAX_SCAN_RECORDS || '100', 10);
+
+export const MAX_SCAN_RECORDS_TOKEN = 'MAX_SCAN_RECORDS';
 
 @Injectable()
 export class ScanStore {
   private readonly logger = new Logger(ScanStore.name);
   private readonly records = new Map<string, ScanRecord>();
+  private readonly maxRecords: number;
+
+  constructor(@Optional() @Inject(MAX_SCAN_RECORDS_TOKEN) maxRecords?: number) {
+    this.maxRecords = maxRecords ?? DEFAULT_MAX_RECORDS;
+  }
 
   /** Creates a new scan record in Queued status. Evicts old records if at capacity. */
   create(repoUrl: string): ScanRecord {
@@ -52,7 +59,7 @@ export class ScanStore {
   }
 
   private evictIfNeeded(): void {
-    if (this.records.size < MAX_RECORDS) {
+    if (this.records.size < this.maxRecords) {
       return;
     }
 
@@ -64,7 +71,7 @@ export class ScanStore {
       ) {
         this.records.delete(id);
         this.logger.log(`Evicted old scan record ${id}`);
-        if (this.records.size < MAX_RECORDS) {
+        if (this.records.size < this.maxRecords) {
           return;
         }
       }
