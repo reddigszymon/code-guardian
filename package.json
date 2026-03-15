@@ -1,8 +1,8 @@
 {
   "name": "code-guardian",
   "version": "0.0.1",
-  "description": "",
-  "author": "",
+  "description": "High-performance Trivy security scanner wrapper with streaming JSON parsing for constant memory usage",
+  "author": "mixowo",
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
