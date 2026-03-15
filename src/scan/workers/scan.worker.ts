@@ -23,6 +23,7 @@ export class ScanWorker {
     private readonly trivyService: TrivyService,
   ) {}
 
+  /** Enqueues or immediately starts a scan. Respects the concurrency limit. */
   async processScan(scanId: string): Promise<void> {
     if (this.activeScans >= MAX_CONCURRENT_SCANS) {
       this.logger.log(

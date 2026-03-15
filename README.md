@@ -127,14 +127,20 @@ Queues a security scan for a public GitHub repository.
 
 ### `GET /api/scan/:scanId`
 
-Returns the current state of a scan.
+Returns the current status of a scan. The `criticalVulnerabilities` field is only included when the scan has finished — it is omitted for `Queued`, `Scanning`, and `Failed` states.
 
-**Response:** `200 OK`
+**Response (in progress):** `200 OK`
 
 ```json
 {
-  "id": "a1b2c3d4-...",
-  "repoUrl": "https://github.com/OWASP/NodeGoat",
+  "status": "Scanning"
+}
+```
+
+**Response (finished):** `200 OK`
+
+```json
+{
   "status": "Finished",
   "criticalVulnerabilities": [
     {
@@ -147,19 +153,29 @@ Returns the current state of a scan.
       "severity": "CRITICAL",
       "target": "package-lock.json"
     }
-  ],
-  "createdAt": "2026-03-15T10:00:00.000Z",
-  "updatedAt": "2026-03-15T10:01:30.000Z"
+  ]
 }
 ```
 
 **Not found:** `404` if scanId does not exist.
 
-**Status transitions:** `Queued → Scanning → Finished` (success) or `Queued → Scanning → Failed` (error, includes `error` field).
+**Status transitions:** `Queued → Scanning → Finished` (success) or `Queued → Scanning → Failed` (error).
 
 ### `GET /`
 
 Health check. Returns `{"status":"ok"}`.
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `3000` | HTTP listen port |
+| `CORS_ORIGIN` | `*` | Allowed CORS origins (comma-separated, or `*` for all) |
+| `SCAN_TIMEOUT_MS` | `300000` | Maximum time (ms) for a single Trivy scan before timeout |
+| `MAX_CONCURRENT_SCANS` | `2` | Maximum scans running in parallel; excess scans are queued |
+| `MAX_SCAN_RECORDS` | `500` | Maximum in-memory scan records before LRU eviction |
+| `MAX_CRITICAL_VULNERABILITIES` | `1000` | Cap on critical vulnerabilities collected per scan |
+| `TRIVY_BIN` | `trivy` | Path to the Trivy binary |
 
 ## Memory Safety
 
@@ -175,7 +191,21 @@ Code Guardian solves this with a **streaming pipeline**:
 
 Each Result is parsed, inspected, and garbage-collected individually. Peak memory usage stays constant regardless of file size.
 
-**To verify:** run with `npm run start:constrained` (150MB heap) or `docker compose up --build` (200MB container limit) and scan a large repository. The process completes without OOM.
+### Verifying OOM safety
+
+```bash
+# Option 1: Node heap constrained to 150 MB
+npm run build && npm run start:constrained
+
+# Option 2: Docker container hard-limited to 200 MB
+docker compose up --build
+
+# Then trigger a scan on a large repo and confirm no OOM:
+curl -X POST http://localhost:3000/api/scan \
+  -H 'Content-Type: application/json' \
+  -d '{"repoUrl":"https://github.com/nickvdyck/hello-docker"}'
+# Poll GET /api/scan/<scanId> — the process should complete without crashing.
+```
 
 ## Testing
 
@@ -193,8 +223,8 @@ curl -X POST http://localhost:3000/api/scan \
 
 # 3. Poll for results (repeat until status is Finished or Failed)
 curl http://localhost:3000/api/scan/<scanId>
-# → 200 {"id":"...","status":"Scanning","criticalVulnerabilities":[],...}
-# → 200 {"id":"...","status":"Finished","criticalVulnerabilities":[...],...}
+# → 200 {"status":"Scanning"}
+# → 200 {"status":"Finished","criticalVulnerabilities":[...]}
 
 # 4. Verify validation
 curl -X POST http://localhost:3000/api/scan \

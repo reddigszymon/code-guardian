@@ -11,11 +11,13 @@ import { getErrorMessage, isExecError } from '../types/scan.types';
 const execFileAsync = promisify(execFile);
 
 const SCAN_TIMEOUT_MS = parseInt(process.env.SCAN_TIMEOUT_MS || '300000', 10);
+const TRIVY_MAX_BUFFER = 50 * 1024 * 1024; // 50 MB — Trivy stderr can be verbose
 
 @Injectable()
 export class TrivyService {
   private readonly logger = new Logger(TrivyService.name);
 
+  /** Shallow-clones a repository into a temporary folder under os.tmpdir(). */
   async cloneRepo(repoUrl: string): Promise<string> {
     const cloneDir = path.join(os.tmpdir(), `code-guardian-${uuidv4()}`);
     this.logger.log(`Cloning ${repoUrl} into ${cloneDir}`);
@@ -69,6 +71,7 @@ export class TrivyService {
     return cloneDir;
   }
 
+  /** Runs Trivy filesystem scan and writes JSON results to outputPath. */
   async runScan(repoDir: string, outputPath: string): Promise<void> {
     this.logger.log(`Running Trivy scan on ${repoDir}`);
     const trivyBin = process.env.TRIVY_BIN || 'trivy';
@@ -77,7 +80,7 @@ export class TrivyService {
       await execFileAsync(
         trivyBin,
         ['fs', '--format', 'json', '--output', outputPath, repoDir],
-        { timeout: SCAN_TIMEOUT_MS, maxBuffer: 50 * 1024 * 1024 },
+        { timeout: SCAN_TIMEOUT_MS, maxBuffer: TRIVY_MAX_BUFFER },
       );
     } catch (error: unknown) {
       if (!isExecError(error)) {
@@ -128,6 +131,7 @@ export class TrivyService {
     this.logger.log(`Trivy scan complete, output: ${outputPath}`);
   }
 
+  /** Removes temporary files/directories. Logs warnings on failure but never throws. */
   async cleanup(paths: string[]): Promise<void> {
     for (const p of paths) {
       try {

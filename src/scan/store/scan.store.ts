@@ -9,6 +9,7 @@ export class ScanStore {
   private readonly logger = new Logger(ScanStore.name);
   private readonly records = new Map<string, ScanRecord>();
 
+  /** Creates a new scan record in Queued status. Evicts old records if at capacity. */
   create(repoUrl: string): ScanRecord {
     this.evictIfNeeded();
     const now = new Date();
@@ -24,10 +25,12 @@ export class ScanStore {
     return record;
   }
 
+  /** Returns a scan record by ID, or undefined if not found. */
   get(id: string): ScanRecord | undefined {
     return this.records.get(id);
   }
 
+  /** Transitions a scan to the given status and merges optional partial data. */
   updateStatus(
     id: string,
     status: ScanStatus,

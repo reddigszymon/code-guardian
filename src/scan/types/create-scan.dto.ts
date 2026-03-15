@@ -1,5 +1,6 @@
 import { IsNotEmpty, IsUrl, Matches } from 'class-validator';
 
+/** Validated request body for POST /api/scan. */
 export class CreateScanDto {
   @IsNotEmpty({ message: 'repoUrl must not be empty' })
   @IsUrl(

@@ -1,3 +1,4 @@
+/** The four lifecycle states of a scan, matching the assignment specification. */
 export enum ScanStatus {
   Queued = 'Queued',
   Scanning = 'Scanning',
@@ -5,6 +6,7 @@ export enum ScanStatus {
   Failed = 'Failed',
 }
 
+/** A single critical vulnerability extracted from Trivy scan results. */
 export interface CriticalVulnerability {
   vulnerabilityId: string;
   pkgName: string;
@@ -16,6 +18,7 @@ export interface CriticalVulnerability {
   target: string;
 }
 
+/** Internal representation of a scan stored in the in-memory store. */
 export interface ScanRecord {
   id: string;
   repoUrl: string;
@@ -26,7 +29,20 @@ export interface ScanRecord {
   updatedAt: Date;
 }
 
-/** Trivy JSON output types — used for stream-based parsing */
+/**
+ * Response shape for GET /api/scan/:scanId.
+ * Status is always present; criticalVulnerabilities only included when Finished.
+ */
+export interface ScanResponse {
+  status: ScanStatus;
+  criticalVulnerabilities?: CriticalVulnerability[];
+}
+
+// ─── Trivy JSON output types — used for stream-based parsing ─────────────
+
+/** Trivy severity level used to filter critical vulnerabilities. */
+export const TRIVY_SEVERITY_CRITICAL = 'CRITICAL';
+
 export interface TrivyVulnerability {
   VulnerabilityID?: string;
   PkgName?: string;
