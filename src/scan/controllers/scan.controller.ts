@@ -3,16 +3,23 @@ import {
   Controller,
   Get,
   HttpCode,
+  Logger,
   NotFoundException,
   Param,
   Post,
   BadRequestException,
 } from '@nestjs/common';
 import { ScanStore } from '../store/scan.store';
+import { ScanWorker } from '../workers/scan.worker';
 
 @Controller('api/scan')
 export class ScanController {
-  constructor(private readonly scanStore: ScanStore) {}
+  private readonly logger = new Logger(ScanController.name);
+
+  constructor(
+    private readonly scanStore: ScanStore,
+    private readonly scanWorker: ScanWorker,
+  ) {}
 
   @Post()
   @HttpCode(202)
@@ -31,7 +38,11 @@ export class ScanController {
 
     const record = this.scanStore.create(repoUrl);
 
-    // TODO: trigger scan worker asynchronously
+    this.scanWorker.processScan(record.id).catch((error) => {
+      this.logger.error(
+        `Unhandled error in scan worker for ${record.id}: ${error.message}`,
+      );
+    });
 
     return { scanId: record.id, status: record.status };
   }
