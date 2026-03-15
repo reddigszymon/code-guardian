@@ -26,11 +26,15 @@ export class ScanController {
   create(@Body() dto: CreateScanDto) {
     const record = this.scanStore.create(dto.repoUrl);
 
-    this.scanWorker.processScan(record.id).catch((error: unknown) => {
-      const msg = error instanceof Error ? error.message : String(error);
-      this.logger.error(
-        `Unhandled error in scan worker for ${record.id}: ${msg}`,
-      );
+    // Defer worker start to next tick so the response returns status "Queued"
+    // before processScan synchronously flips it to "Scanning".
+    setImmediate(() => {
+      this.scanWorker.processScan(record.id).catch((error: unknown) => {
+        const msg = error instanceof Error ? error.message : String(error);
+        this.logger.error(
+          `Unhandled error in scan worker for ${record.id}: ${msg}`,
+        );
+      });
     });
 
     return { scanId: record.id, status: record.status };

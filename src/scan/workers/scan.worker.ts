@@ -7,9 +7,16 @@ import { TrivyService } from '../services/trivy.service';
 import { ScanStatus, getErrorMessage } from '../types/scan.types';
 import { extractCriticalVulnerabilities } from '../streams/vulnerability-filter.stream';
 
+const MAX_CONCURRENT_SCANS = parseInt(
+  process.env.MAX_CONCURRENT_SCANS || '2',
+  10,
+);
+
 @Injectable()
 export class ScanWorker {
   private readonly logger = new Logger(ScanWorker.name);
+  private activeScans = 0;
+  private readonly queue: string[] = [];
 
   constructor(
     private readonly scanStore: ScanStore,
@@ -17,12 +24,38 @@ export class ScanWorker {
   ) {}
 
   async processScan(scanId: string): Promise<void> {
+    if (this.activeScans >= MAX_CONCURRENT_SCANS) {
+      this.logger.log(
+        `[${scanId}] Queued (${this.activeScans}/${MAX_CONCURRENT_SCANS} active)`,
+      );
+      this.queue.push(scanId);
+      return;
+    }
+    await this.runScan(scanId);
+  }
+
+  private drainQueue(): void {
+    while (this.queue.length > 0 && this.activeScans < MAX_CONCURRENT_SCANS) {
+      const nextId = this.queue.shift();
+      if (nextId) {
+        // Fire-and-forget so we can keep draining
+        this.runScan(nextId).catch((error: unknown) => {
+          this.logger.error(
+            `[${nextId}] Queued scan failed: ${getErrorMessage(error)}`,
+          );
+        });
+      }
+    }
+  }
+
+  private async runScan(scanId: string): Promise<void> {
     const record = this.scanStore.get(scanId);
     if (!record) {
       this.logger.error(`Scan record ${scanId} not found`);
       return;
     }
 
+    this.activeScans++;
     const outputPath = path.join(
       os.tmpdir(),
       `code-guardian-result-${uuidv4()}.json`,
@@ -39,13 +72,13 @@ export class ScanWorker {
       await this.trivyService.runScan(cloneDir, outputPath);
       this.logger.log(`[${scanId}] Trivy scan complete`);
 
-      const criticals = await extractCriticalVulnerabilities(outputPath);
+      const result = await extractCriticalVulnerabilities(outputPath);
       this.logger.log(
-        `[${scanId}] Found ${criticals.length} critical vulnerabilities`,
+        `[${scanId}] Found ${result.vulnerabilities.length} critical vulnerabilities${result.truncated ? ' (truncated)' : ''}`,
       );
 
       this.scanStore.updateStatus(scanId, ScanStatus.Finished, {
-        criticalVulnerabilities: criticals,
+        criticalVulnerabilities: result.vulnerabilities,
       });
       this.logger.log(`[${scanId}] Scan finished`);
     } catch (error: unknown) {
@@ -61,6 +94,7 @@ export class ScanWorker {
         );
       }
     } finally {
+      this.activeScans--;
       try {
         const cleanupPaths = [outputPath];
         if (cloneDir) {
@@ -72,6 +106,8 @@ export class ScanWorker {
           `[${scanId}] Cleanup failed: ${getErrorMessage(cleanupError)}`,
         );
       }
+      // Process next queued scan after cleanup frees disk space
+      void this.drainQueue();
     }
   }
 }

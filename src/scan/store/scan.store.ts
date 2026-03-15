@@ -1,12 +1,16 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
 import { ScanRecord, ScanStatus } from '../types/scan.types';
 
+const MAX_RECORDS = parseInt(process.env.MAX_SCAN_RECORDS || '500', 10);
+
 @Injectable()
 export class ScanStore {
+  private readonly logger = new Logger(ScanStore.name);
   private readonly records = new Map<string, ScanRecord>();
 
   create(repoUrl: string): ScanRecord {
+    this.evictIfNeeded();
     const now = new Date();
     const record: ScanRecord = {
       id: uuidv4(),
@@ -40,6 +44,26 @@ export class ScanStore {
         id: record.id,
         updatedAt: record.updatedAt,
       });
+    }
+  }
+
+  private evictIfNeeded(): void {
+    if (this.records.size < MAX_RECORDS) {
+      return;
+    }
+
+    // Evict oldest completed/failed records first (Map iterates in insertion order)
+    for (const [id, record] of this.records) {
+      if (
+        record.status === ScanStatus.Finished ||
+        record.status === ScanStatus.Failed
+      ) {
+        this.records.delete(id);
+        this.logger.log(`Evicted old scan record ${id}`);
+        if (this.records.size < MAX_RECORDS) {
+          return;
+        }
+      }
     }
   }
 }

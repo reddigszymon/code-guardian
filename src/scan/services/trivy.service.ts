@@ -77,7 +77,7 @@ export class TrivyService {
       await execFileAsync(
         trivyBin,
         ['fs', '--format', 'json', '--output', outputPath, repoDir],
-        { timeout: SCAN_TIMEOUT_MS },
+        { timeout: SCAN_TIMEOUT_MS, maxBuffer: 50 * 1024 * 1024 },
       );
     } catch (error: unknown) {
       if (!isExecError(error)) {
