@@ -165,6 +165,91 @@ Returns the current status of a scan. The `criticalVulnerabilities` field is onl
 
 Health check. Returns `{"status":"ok"}`.
 
+## GraphQL API
+
+In addition to the REST API, Code Guardian exposes a **GraphQL** endpoint at `/graphql` using Apollo Server (NestJS code-first approach). The GraphQL playground is available in the browser at `http://localhost:3000/graphql`.
+
+### Schema
+
+```graphql
+type Vulnerability {
+  vulnerabilityId: String!
+  pkgName: String!
+  installedVersion: String!
+  fixedVersion: String!
+  title: String!
+  description: String!
+  severity: String!
+  target: String!
+}
+
+type Scan {
+  id: ID!
+  status: String!
+  criticalVulnerabilities: [Vulnerability!]
+}
+
+type Mutation {
+  startScan(repoUrl: String!): Scan!
+}
+
+type Query {
+  scan(id: ID!): Scan
+}
+```
+
+### Example: Start a scan
+
+```graphql
+mutation {
+  startScan(repoUrl: "https://github.com/OWASP/NodeGoat") {
+    id
+    status
+  }
+}
+```
+
+### Example: Poll for results
+
+```graphql
+query {
+  scan(id: "YOUR_SCAN_ID") {
+    id
+    status
+    criticalVulnerabilities {
+      vulnerabilityId
+      pkgName
+      installedVersion
+      fixedVersion
+      title
+    }
+  }
+}
+```
+
+## Frontend
+
+A minimal React + TypeScript single-page app for interacting with the scanner. Located in the `frontend/` directory.
+
+### Running the frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The dev server starts on `http://localhost:5173` and proxies `/api` requests to the backend at `http://localhost:3000`.
+
+### Features
+
+- Input field pre-filled with `https://github.com/OWASP/NodeGoat`
+- **Start Scan** button triggers `POST /api/scan` and begins polling
+- Status indicator with spinner while scan is Queued/Scanning
+- Results table showing critical vulnerabilities (ID, Package, Installed Version, Fixed Version, Title)
+- Error display for failed scans
+- **Reset** button to start over
+
 ## Environment Variables
 
 | Variable | Default | Description |
